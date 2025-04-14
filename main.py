@@ -2,27 +2,29 @@
 import inquirer
 from inquirer.themes import BlueComposure
 import pandas as pd
-from query_processing import bm25_query, bert_query
 from nltk.tokenize import word_tokenize
 from rank_bm25 import BM25Okapi
-import numpy as np
-import json
-import torch
+from search_function import search_results
 
 print('Welcome to our lyric search, please select an option below:')
 
 df = pd.read_csv('/Users/jamesshortland/Desktop/preprocessed_genius_lyrics.csv')
-bert_embeddings = np.load('/Users/jamesshortland/Desktop/bert_embeddings.npy')
-with open('/Users/jamesshortland/Desktop/bert_ids.json') as f:
-    berts_ids = json.load(f)
-
-id_to_embedding_row = {song_id: i for i, song_id in enumerate(berts_ids)}
 
 on_opening = [
     inquirer.List(name='Search_options',
                   message='Know what you want to look for? Select an option below to narrow your search, or select '
                           '"search everything" to search the whole database',
                   choices=['Artist', 'Genre', 'Release Year', 'Search Everything'])]
+
+genres = [
+    inquirer.List(name='genres',
+                  message='Which genre would you like to search in?',
+                  choices=['Rap', 'RB', 'Rock', 'Pop', 'Country', 'go back'])]
+
+decades = [
+    inquirer.List(name='decades',
+                  message='Select the decade you want to search from',
+                  choices=[1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 'go back'])]
 
 while True:
     opening_answer = inquirer.prompt(on_opening, theme=BlueComposure())
@@ -43,40 +45,57 @@ while True:
                 bm25 = BM25Okapi(tokenized_lyrics)
 
                 query = input(f"Enter lyrics to search for songs by {artist}:\n")
-
-                final_query_bm25 = bm25_query(query)
-                final_query_bert = bert_query(query)
-
-                scores = bm25.get_scores(final_query_bm25)
-                df_artist['bm25_score'] = scores
-
-                top_n = 100  # or whatever range you want to pass into BERT
-                bm25_top_df = df_artist.sort_values(by='bm25_score', ascending=False).head(top_n)
-                bm25_top_id = bm25_top_df['id'].tolist()
-
-                embedding_indices = [id_to_embedding_row[song_id] for song_id in bm25_top_id if
-                                     song_id in id_to_embedding_row]
-
-                bm25_top_embeddings = bert_embeddings[embedding_indices]
-
-                query_tensor = torch.tensor(final_query_bert)
-                bm25_top_tensor = torch.tensor(bm25_top_embeddings)
-
-                similarities = torch.matmul(bm25_top_tensor, query_tensor)
-
-                top_k = 5
-                top_scores, top_indices = torch.topk(similarities, k=top_k)
-
-                print("\n🎧 Top Results (BERT re-ranked from BM25):")
-
-                for score, idx in zip(top_scores, top_indices):
-                    real_idx = bm25_top_df.iloc[int(idx)].name
-                    row = df.loc[real_idx]
-                    print(f"\nScore: {score.item():.4f}")
-                    print(f"Title: {row['title']}")
-                    print(f'Artist: {row['artist']}')
+                search_results(df_artist, query)
 
             elif artist == 'break':
                 break
             else:
                 print("Sorry, we couldn't find that artist in the database, try again?")
+    if opening_answer == 'Genre':
+        while True:
+            print('Select from the options below')
+            genre_answer = inquirer.prompt(genres, theme=BlueComposure())
+            genre_answer = genre_answer['genres']
+
+            if genre_answer == 'go back':
+                break
+
+            else:
+                genre_df = df[df['tag'].str.lower() == genre_answer.lower()].copy()
+
+                query = input(f"Enter lyrics to search for songs in {genre_answer}:\n")
+                search_results(genre_df, query)
+
+    if opening_answer == 'Release Year':
+        while True:
+            print('Select from the decades below to narrow your search')
+            decade_answer = inquirer.prompt(decades, theme=BlueComposure())
+            decade_answer = decade_answer['decades']
+
+            df['decade'] = (df['year'] // 10) * 10
+
+            if decade_answer == 'go back':
+                break
+            else:
+                try:
+                    decade_int = int(decade_answer)
+                except ValueError:
+                    print("Invalid input. Please select a valid decade.")
+                    continue
+
+                decade_df = df[df['decade'] == decade_int].copy()
+
+                if decade_df.empty:
+                    print(f"No songs found for the {decade_int}s.")
+                    continue
+
+                query = input(f"Enter lyrics to search for songs in the {decade_int}'s:\n")
+                search_results(decade_df, query)
+
+    if opening_answer == 'Search Everything':
+        while True:
+            query = input(f"Enter lyrics to search for songs in the whole database or just press enter to go back\n")
+            if query == '':
+                break
+            else:
+                search_results(df, query)
