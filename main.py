@@ -1,64 +1,82 @@
+#!/usr/bin/env python3
+import inquirer
+from inquirer.themes import BlueComposure
 import pandas as pd
-import numpy as np
+from query_processing import bm25_query, bert_query
+from nltk.tokenize import word_tokenize
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
-from sklearn.preprocessing import MinMaxScaler
-import time
+import numpy as np
+import json
+import torch
 
-start_time = time.time()
-df = pd.read_csv('/Users/jamesshortland/Desktop/genius_lyrics_reduced.csv')
+print('Welcome to our lyric search, please select an option below:')
 
-def preprocess(text):
-    text = str(text).lower()
-    text = text.replace("\n", " ")  # Remove newlines
-    return ' '.join([word for word in text.split() if len(word) > 2])  # Simple tokenization
+df = pd.read_csv('/Users/jamesshortland/Desktop/preprocessed_genius_lyrics.csv')
+bert_embeddings = np.load('/Users/jamesshortland/Desktop/bert_embeddings.npy')
+with open('/Users/jamesshortland/Desktop/bert_ids.json') as f:
+    berts_ids = json.load(f)
 
+id_to_embedding_row = {song_id: i for i, song_id in enumerate(berts_ids)}
 
-df['processed_lyrics'] = df['lyrics'].apply(preprocess)
+on_opening = [
+    inquirer.List(name='Search_options',
+                  message='Know what you want to look for? Select an option below to narrow your search, or select '
+                          '"search everything" to search the whole database',
+                  choices=['Artist', 'Genre', 'Release Year', 'Search Everything'])]
 
-# BM25 Setup
-tokenized_corpus = [doc.split() for doc in df['processed_lyrics']]
-bm25 = BM25Okapi(tokenized_corpus)
+while True:
+    opening_answer = inquirer.prompt(on_opening, theme=BlueComposure())
+    opening_answer = opening_answer['Search_options']
+    if opening_answer == 'Artist':
+        while True:
+            artist = input("Search by artist: please type an artist's name below and we'll see if they're "
+                           "in the database. type 'break' to return to the menu. \n")
+            artist = artist.strip().lower()
+            df['artist_normalized'] = df['artist'].str.strip().str.lower()
 
-# BERT Setup (small model for quick testing)
-bert_model = SentenceTransformer('all-MiniLM-L6-v2')
-lyrics_embeddings = bert_model.encode(df['processed_lyrics'])
+            if artist in df['artist_normalized'].values:
+                print(f"We've got them!")
+                df_artist = df[df['artist_normalized'] == artist].copy()
+                df_artist.drop(columns='artist_normalized', inplace=True)
+                lyrics = df_artist['preprocessed_lyrics'].dropna().tolist()
+                tokenized_lyrics = [word_tokenize(song) for song in lyrics]
+                bm25 = BM25Okapi(tokenized_lyrics)
 
+                query = input(f"Enter lyrics to search for songs by {artist}:\n")
 
-# Hybrid Search Function
-def hybrid_search(query, bm25_weight=0.6, bert_weight=0.4, n_results=3):
-    print("starting search...")
-    # Preprocess query
-    processed_query = preprocess(query)
+                final_query_bm25 = bm25_query(query)
+                final_query_bert = bert_query(query)
 
-    # BM25 scores
-    tokenized_query = processed_query.split()
-    bm25_scores = bm25.get_scores(tokenized_query)
+                scores = bm25.get_scores(final_query_bm25)
+                df_artist['bm25_score'] = scores
 
-    # BERT scores
-    query_embedding = bert_model.encode([processed_query])[0]
-    bert_scores = lyrics_embeddings @ query_embedding.T  # Cosine similarity
+                top_n = 100  # or whatever range you want to pass into BERT
+                bm25_top_df = df_artist.sort_values(by='bm25_score', ascending=False).head(top_n)
+                bm25_top_id = bm25_top_df['id'].tolist()
 
-    # Normalize scores
-    bm25_scores_norm = MinMaxScaler().fit_transform(bm25_scores.reshape(-1, 1)).flatten()
-    bert_scores_norm = MinMaxScaler().fit_transform(bert_scores.reshape(-1, 1)).flatten()
+                embedding_indices = [id_to_embedding_row[song_id] for song_id in bm25_top_id if
+                                     song_id in id_to_embedding_row]
 
-    # Combine scores
-    combined_scores = (bm25_weight * bm25_scores_norm) + (bert_weight * bert_scores_norm)
+                bm25_top_embeddings = bert_embeddings[embedding_indices]
 
-    # Get top results
-    top_indices = np.argsort(combined_scores)[-n_results:][::-1]
-    results = df.iloc[top_indices].copy()
-    results['score'] = combined_scores[top_indices]
-    end_time = time.time()
-    print(end_time - start_time)
+                query_tensor = torch.tensor(final_query_bert)
+                bm25_top_tensor = torch.tensor(bm25_top_embeddings)
 
-    return results[['artist', 'title', 'views', 'score', 'lyrics']]
+                similarities = torch.matmul(bm25_top_tensor, query_tensor)
 
+                top_k = 5
+                top_scores, top_indices = torch.topk(similarities, k=top_k)
 
-# Try it out!
-print(hybrid_search("sad song"))
-print("\n---\n")
-print(hybrid_search("plan from god"))
-print("\n---\n")
-print(hybrid_search("calling you"))
+                print("\n🎧 Top Results (BERT re-ranked from BM25):")
+
+                for score, idx in zip(top_scores, top_indices):
+                    real_idx = bm25_top_df.iloc[int(idx)].name
+                    row = df.loc[real_idx]
+                    print(f"\nScore: {score.item():.4f}")
+                    print(f"Title: {row['title']}")
+                    print(f'Artist: {row['artist']}')
+
+            elif artist == 'break':
+                break
+            else:
+                print("Sorry, we couldn't find that artist in the database, try again?")
