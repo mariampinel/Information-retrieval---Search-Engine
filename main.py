@@ -7,7 +7,8 @@ from search_function import search_results
 
 print('Welcome to our lyric search, please select an option below:')
 
-df= pd.read_csv('preprocessed_genius_lyrics.csv')
+df = pd.read_csv('preprocessed_genius_lyrics.csv')
+
 # Mapping stemmed versions to sections
 section_stems = {
     'intro': ['intro'],
@@ -31,7 +32,7 @@ def process_lyrics(lyrics, sections):
     output = []
 
     for raw_section, content in matches: 
-        section_label = raw_section.strip().split()[0] # Take first word of section header only
+        section_label = raw_section.strip().split()[0]
         canonical_section = stem_to_section.get(section_label)
 
         if canonical_section in sections:
@@ -39,7 +40,7 @@ def process_lyrics(lyrics, sections):
 
     return '\n'.join(output)
 
-# Only apply section filter only if user selected something
+# Only apply section filter if user selected something
 def filter_lyrics_by_section(df, sections):
     if sections:
         df['preprocessed_lyrics'] = df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
@@ -47,11 +48,11 @@ def filter_lyrics_by_section(df, sections):
         df['preprocessed_lyrics'] = df['preprocessed_lyrics'].fillna('')
     return df
 
-# Sections prompt
+# Prompts
 section_prompt = [
     inquirer.Checkbox(name='sections',
                       message='Limit search to specific lyric sections?',
-                      choices=['intro', 'verse', 'chorus', 'outro'])
+                      choices=['intro', 'verse', 'chorus', 'outro', 'Full song'])
 ]
 
 on_opening = [
@@ -72,13 +73,9 @@ decades = [
                   choices=[1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 'go back'])
 ]
 
-
-# while True:
-#     opening = inquirer.prompt(on_opening, theme=BlueComposure())['Search_options']
+# Main loop
 while True:
     response = inquirer.prompt(on_opening, theme=BlueComposure())
-    print("Prompt response:", response)  # <-- Add this line for debugging
-
     if not response:
         print("Something went wrong with the prompt. Exiting.")
         break
@@ -95,6 +92,8 @@ while True:
                 print("We've got them!")
                 filtered_df = df[df['artist_normalized'] == artist].copy()
                 sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
+                if "Full song" in sections:
+                    sections = []
                 filtered_df = filter_lyrics_by_section(filtered_df, sections)
                 query = input(f"Enter lyrics to search for songs by {artist}:\n")
                 search_results(filtered_df, query)
@@ -108,6 +107,8 @@ while True:
                 break
             filtered_df = df[df['tag'].str.lower() == genre.lower()].copy()
             sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
+            if "Full song" in sections:
+                sections = []
             filtered_df = filter_lyrics_by_section(filtered_df, sections)
             query = input(f"Enter lyrics to search for songs in {genre}:\n")
             search_results(filtered_df, query)
@@ -125,6 +126,8 @@ while True:
                     print(f"No songs found for the {decade}s.")
                     continue
                 sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
+                if "Full song" in sections:
+                    sections = []
                 filtered_df = filter_lyrics_by_section(filtered_df, sections)
                 query = input(f"Enter lyrics to search for songs in the {decade}s:\n")
                 search_results(filtered_df, query)
@@ -137,6 +140,8 @@ while True:
             if query == '':
                 break
             sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
+            if "Full song" in sections:
+                sections = []
             filtered_df = df.copy()
             filtered_df = filter_lyrics_by_section(filtered_df, sections)
             search_results(filtered_df, query)
