@@ -4,6 +4,7 @@ import json
 from query_processing import bm25_query, bert_query
 from rank_bm25 import BM25Okapi
 import torch
+from torch.nn.functional import cosine_similarity
 import inquirer
 from inquirer.themes import BlueComposure
 
@@ -24,7 +25,7 @@ def search_results(df, query):
     scores = bm25.get_scores(final_query_bm25)
     df['bm25_score'] = scores
 
-    top_n = 100  
+    top_n = 100  # or whatever range you want to pass into BERT
     bm25_top_df = df.sort_values(by='bm25_score', ascending=False).head(top_n)
     bm25_top_id = bm25_top_df['id'].tolist()
 
@@ -36,7 +37,7 @@ def search_results(df, query):
     query_tensor = torch.tensor(final_query_bert)
     bm25_top_tensor = torch.tensor(bm25_top_embeddings)
 
-    similarities = torch.matmul(bm25_top_tensor, query_tensor)
+    similarities = cosine_similarity(query_tensor.unsqueeze(0), bm25_top_tensor)
 
     top_k = 10
     top_scores, top_indices = torch.topk(similarities, k=top_k)
@@ -50,7 +51,7 @@ def search_results(df, query):
             "Score": score.item(),
             "Title": row["title"],
             "Artist": row["artist"],
-            "Lyrics": row['lyrics']  
+            "Lyrics": row['lyrics']
         })
 
     top_results_df = pd.DataFrame(results)

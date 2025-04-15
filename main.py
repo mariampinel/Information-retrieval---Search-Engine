@@ -6,7 +6,9 @@ from nltk.tokenize import word_tokenize
 from rank_bm25 import BM25Okapi
 from search_function import search_results
 
+print('---------------------------------')
 print('Welcome to our lyric search, please select an option below:')
+print('---------------------------------')
 
 df = pd.read_csv('/Users/jamesshortland/Desktop/preprocessed_genius_lyrics.csv')
 
@@ -40,9 +42,6 @@ while True:
                 print(f"We've got them!")
                 df_artist = df[df['artist_normalized'] == artist].copy()
                 df_artist.drop(columns='artist_normalized', inplace=True)
-                lyrics = df_artist['preprocessed_lyrics'].dropna().tolist()
-                tokenized_lyrics = [word_tokenize(song) for song in lyrics]
-                bm25 = BM25Okapi(tokenized_lyrics)
 
                 query = input(f"Enter lyrics to search for songs by {artist}:\n")
                 search_results(df_artist, query)
@@ -77,12 +76,7 @@ while True:
             if decade_answer == 'go back':
                 break
             else:
-                try:
-                    decade_int = int(decade_answer)
-                except ValueError:
-                    print("Invalid input. Please select a valid decade.")
-                    continue
-
+                decade_int = int(decade_answer)
                 decade_df = df[df['decade'] == decade_int].copy()
 
                 if decade_df.empty:
