@@ -9,44 +9,69 @@ print('Welcome to our lyric search, please select an option below:')
 
 df = pd.read_csv('/Users/jamesshortland/Desktop/preprocessed_genius_lyrics.csv')
 
-# Normalize and filter for lyric sections
+# Mapping stemmed versions to sections
+section_stems = {
+    'intro': ['intro'],
+    'verse': ['verse', 'vers'],
+    'chorus': ['chorus', 'choru'],
+    'outro': ['outro']
+}
+
+# Process and filter lyrics based on section (if needed)
 def process_lyrics(lyrics, sections):
-    lyrics = re.sub(r'\[vers(?:e)?[^\]]*\]', '[verse]', lyrics, flags=re.IGNORECASE)
-    lyrics = re.sub(r'\[(chorus|intro|outro)\]', lambda m: f"[{m.group(1).lower()}]", lyrics, flags=re.IGNORECASE)
-    if not sections:
-        return lyrics
-    output, current_section, capture = [], None, False
-    for line in lyrics.split('\n'):
-        match = re.match(r'\[(\w+)\]', line)
-        if match:
-            current_section = match.group(1).lower()
-            capture = current_section in sections
-        elif capture and line.strip():
-            output.append(line)
+    # Normalize headers in brackets 
+    lyrics = re.sub(r'\[([^\]]+)\]', lambda m: f"[{m.group(1).lower()}]", lyrics)
+
+    # Map stemmed terms to section
+    stem_to_section = {stem: section for section, stems in section_stems.items() for stem in stems}
+
+    # Match sections to lyrics
+    pattern = r'\[([^\]]+)\](.*?)(?=\[[^\]]+\]|$)'
+    matches = re.findall(pattern, lyrics, re.DOTALL)
+
+    output = []
+
+    for raw_section, content in matches: 
+        section_label = raw_section.strip().split()[0] # Take first word of section header only
+        canonical_section = stem_to_section.get(section_label)
+
+        if canonical_section in sections:
+            output.append(content.strip())
+
     return '\n'.join(output)
 
-# Prompt to select section
+# Only apply section filter only if user selected something
+def filter_lyrics_by_section(df, sections):
+    if sections:
+        df['preprocessed_lyrics'] = df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
+    else:
+        df['preprocessed_lyrics'] = df['preprocessed_lyrics'].fillna('')
+    return df
+
+# Sections prompt
 section_prompt = [
     inquirer.Checkbox(name='sections',
                       message='Limit search to specific lyric sections?',
                       choices=['intro', 'verse', 'chorus', 'outro'])
 ]
 
-
 on_opening = [
     inquirer.List(name='Search_options',
                   message='Know what you want to look for? Select an option below:',
-                  choices=['Artist', 'Genre', 'Release Year', 'Search Everything'])]
+                  choices=['Artist', 'Genre', 'Release Year', 'Search Everything'])
+]
 
 genres = [
     inquirer.List(name='genres',
                   message='Which genre would you like to search in?',
-                  choices=['Rap', 'RB', 'Rock', 'Pop', 'Country', 'go back'])]
+                  choices=['Rap', 'RB', 'Rock', 'Pop', 'Country', 'go back'])
+]
 
 decades = [
     inquirer.List(name='decades',
                   message='Select the decade you want to search from',
-                  choices=[1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 'go back'])]
+                  choices=[1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 'go back'])
+]
 
 
 while True:
@@ -62,7 +87,7 @@ while True:
                 print("We've got them!")
                 filtered_df = df[df['artist_normalized'] == artist].copy()
                 sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
-                filtered_df['preprocessed_lyrics'] = filtered_df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
+                filtered_df = filter_lyrics_by_section(filtered_df, sections)
                 query = input(f"Enter lyrics to search for songs by {artist}:\n")
                 search_results(filtered_df, query)
             else:
@@ -75,7 +100,7 @@ while True:
                 break
             filtered_df = df[df['tag'].str.lower() == genre.lower()].copy()
             sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
-            filtered_df['preprocessed_lyrics'] = filtered_df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
+            filtered_df = filter_lyrics_by_section(filtered_df, sections)
             query = input(f"Enter lyrics to search for songs in {genre}:\n")
             search_results(filtered_df, query)
 
@@ -92,7 +117,7 @@ while True:
                     print(f"No songs found for the {decade}s.")
                     continue
                 sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
-                filtered_df['preprocessed_lyrics'] = filtered_df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
+                filtered_df = filter_lyrics_by_section(filtered_df, sections)
                 query = input(f"Enter lyrics to search for songs in the {decade}s:\n")
                 search_results(filtered_df, query)
             except ValueError:
@@ -105,5 +130,6 @@ while True:
                 break
             sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
             filtered_df = df.copy()
-            filtered_df['preprocessed_lyrics'] = filtered_df['preprocessed_lyrics'].fillna('').apply(lambda x: process_lyrics(x, sections))
+            filtered_df = filter_lyrics_by_section(filtered_df, sections)
             search_results(filtered_df, query)
+
