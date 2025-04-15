@@ -24,7 +24,7 @@ def search_results(df, query):
     scores = bm25.get_scores(final_query_bm25)
     df['bm25_score'] = scores
 
-    top_n = 100  # or whatever range you want to pass into BERT
+    top_n = 100  
     bm25_top_df = df.sort_values(by='bm25_score', ascending=False).head(top_n)
     bm25_top_id = bm25_top_df['id'].tolist()
 
@@ -50,7 +50,7 @@ def search_results(df, query):
             "Score": score.item(),
             "Title": row["title"],
             "Artist": row["artist"],
-            "Lyrics": row['lyrics']  # Optional: useful for reference
+            "Lyrics": row['lyrics']  
         })
 
     top_results_df = pd.DataFrame(results)
