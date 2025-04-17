@@ -157,7 +157,7 @@ def filter_lyrics_by_section(df, sections):
 section_prompt = [
     inquirer.Checkbox(name='sections',
                       message='Limit search to specific lyric sections?',
-                      choices=['intro', 'verse', 'chorus', 'outro', 'Full song'])
+                      choices=['intro', 'verse', 'chorus', 'outro', 'full song'])
 ]
 
 
@@ -239,12 +239,12 @@ while True:
 
     elif opening == 'Search Everything':
         while True:
-            query = input("Enter lyrics to search the entire database (or press Enter to go back):\n")
-            if query == '':
-                break
             sections = inquirer.prompt(section_prompt, theme=BlueComposure())['sections']
             if "Full song" in sections:
                 sections = []
+            query = input("Enter lyrics to search the entire database (or press Enter to go back):\n")
+            if query == '':
+                break
             filtered_df = df.copy()
             filtered_df = filter_lyrics_by_section(filtered_df, sections)
             search_results(filtered_df, query)
