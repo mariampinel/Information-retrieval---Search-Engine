@@ -49,9 +49,9 @@ print('-------------------------------------------------------------')
 print('Welcome to our lyric search, please select an option below:')
 print('-------------------------------------------------------------')
 
-df = pd.read_csv('/Users/jamesshortland/Desktop/preprocessed_genius_lyrics.csv')
-bert_embeddings = np.load('/Users/jamesshortland/Desktop/bert_embeddings.npy')
-with open('/Users/jamesshortland/Desktop/bert_ids.json') as f:
+df = pd.read_csv('preprocessed_genius_lyrics.csv')
+bert_embeddings = np.load('bert_embeddings.npy')
+with open('bert_ids.json') as f:
     berts_ids = json.load(f)
 
 id_to_embedding_row = {song_id: i for i, song_id in enumerate(berts_ids)}
